@@ -86,7 +86,7 @@ def camera_diff_then_clahe_with_snapshot(
             if cv2.waitKey(1) & 0xFF == ord('c'):
                 snapshot_filename = f"snapshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
                 snapshot_path = os.path.join(snapshot_folder, snapshot_filename)
-                cv2.imwrite(snapshot_path, frame)
+                cv2.imwrite(snapshot_path, diff_clahe)
                 print(f"拍照并保存: {snapshot_path}")
 
             # 按下 'q' 键退出
@@ -101,7 +101,7 @@ def camera_diff_then_clahe_with_snapshot(
 
 if __name__ == "__main__":
     camera_diff_then_clahe_with_snapshot(
-        out_video_path="collect_3.mp4",  # 输出视频
+        out_video_path="collect_5.mp4",  # 输出视频
         snapshot_folder="snapshots",  # 指定拍照保存的文件夹
         clip_limit=2.0,
         tile_grid_size=(3, 3),
