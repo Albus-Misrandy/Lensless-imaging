@@ -13,7 +13,7 @@ def camera_diff_then_clahe_with_snapshot(
         wait_time_seconds: float = 0.5  # 等待 0.5秒
 ):
     # 打开摄像头（0 是默认摄像头，多个摄像头可用 1, 2 等）
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(2)
     if not cap.isOpened():
         raise RuntimeError("无法打开摄像头")
 
@@ -78,6 +78,7 @@ def camera_diff_then_clahe_with_snapshot(
 
         # 预览
         if preview:
+            cv2.imshow("Origin", frame)
             cv2.imshow("diff", diff)
             cv2.imshow("diff + CLAHE", diff_clahe)
 
@@ -100,7 +101,7 @@ def camera_diff_then_clahe_with_snapshot(
 
 if __name__ == "__main__":
     camera_diff_then_clahe_with_snapshot(
-        out_video_path="camera_diff_clahe.mp4",  # 输出视频
+        out_video_path="collect_3.mp4",  # 输出视频
         snapshot_folder="snapshots",  # 指定拍照保存的文件夹
         clip_limit=2.0,
         tile_grid_size=(3, 3),
