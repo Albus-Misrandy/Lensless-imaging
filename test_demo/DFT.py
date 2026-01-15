@@ -1,64 +1,106 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 
-img = cv2.imread("6.jpg", cv2.IMREAD_GRAYSCALE)
-if img is None:
-    raise ValueError("图片路径不对 or 文件不存在")
+def _lowpass_single_channel(channel_u8: np.ndarray, mask: np.ndarray):
+    """对单通道做低通，返回 (filtered_u8, dft_shift, fshift_filtered)"""
+    img_float = np.float32(channel_u8)
+    dft = cv2.dft(img_float, flags=cv2.DFT_COMPLEX_OUTPUT)
+    dft_shift = np.fft.fftshift(dft)
 
-img_float = np.float32(img)
-dft = cv2.dft(img_float, flags=cv2.DFT_COMPLEX_OUTPUT)
-dft_shift = np.fft.fftshift(dft)
+    fshift_filtered = dft_shift * mask
 
-rows, cols = img.shape
-crow, ccol = rows // 2, cols // 2   # 频谱中心位置
+    f_ishift = np.fft.ifftshift(fshift_filtered)
+    img_back_complex = cv2.idft(f_ishift)
+    img_back = cv2.magnitude(img_back_complex[:, :, 0], img_back_complex[:, :, 1])
 
-# 1）做一个低通滤波器掩膜：中心一个圆形是 1，其余都是 0
-mask = np.zeros((rows, cols, 2), np.float32)
-radius = 30   # 半径可以自己改，大一点就更模糊
-y, x = np.ogrid[:rows, :cols]
-center_mask = (x - ccol)**2 + (y - crow)**2 <= radius**2
-mask[center_mask] = 1
+    img_back_norm = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX)
+    return np.uint8(img_back_norm), dft_shift, fshift_filtered
 
-# 2）频域相乘：相当于把高频都砍掉
-fshift_filtered = dft_shift * mask
 
-# 3）逆移位 + 逆 DFT
-f_ishift = np.fft.ifftshift(fshift_filtered)
-img_back_complex = cv2.idft(f_ishift)
-img_back = cv2.magnitude(img_back_complex[:,:,0], img_back_complex[:,:,1])
+def lowpass_fft_video_luma(
+    in_path: str,
+    out_path: str,
+    radius: int = 30,
+    preview: bool = True,
+    preview_every: int = 15
+):
+    cap = cv2.VideoCapture(in_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"无法打开视频: {in_path}")
 
-# 4）归一化到 0–255
-img_back_norm = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX)
-img_back_uint8 = np.uint8(img_back_norm)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps <= 0:
+        fps = 30
 
-# 5）再顺手算一下滤波后的频谱，看看对比
-mag_filtered = cv2.magnitude(fshift_filtered[:,:,0], fshift_filtered[:,:,1])
-mag_filtered = 20 * np.log(1 + mag_filtered)
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-plt.figure(figsize=(12, 8))
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(out_path, fourcc, fps, (w, h), isColor=True)
+    if not writer.isOpened():
+        cap.release()
+        raise RuntimeError(f"无法创建输出视频: {out_path}")
 
-plt.subplot(2, 2, 1)
-plt.title("Original")
-plt.imshow(img, cmap="gray")
-plt.axis("off")
+    # mask（复用）
+    rows, cols = h, w
+    crow, ccol = rows // 2, cols // 2
+    y, x = np.ogrid[:rows, :cols]
+    center_mask = (x - ccol) ** 2 + (y - crow) ** 2 <= radius ** 2
+    mask = np.zeros((rows, cols, 2), np.float32)
+    mask[center_mask] = 1
 
-plt.subplot(2, 2, 2)
-plt.title("Original Spectrum")
-orig_mag = cv2.magnitude(dft_shift[:,:,0], dft_shift[:,:,1])
-orig_mag = 20 * np.log(1 + orig_mag)
-plt.imshow(orig_mag, cmap="gray")
-plt.axis("off")
+    frame_idx = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-plt.subplot(2, 2, 3)
-plt.title("Low-pass Filtered Image")
-plt.imshow(img_back_uint8, cmap="gray")
-plt.axis("off")
+        # 1) BGR -> YCrCb
+        ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+        Y, Cr, Cb = cv2.split(ycrcb)
 
-plt.subplot(2, 2, 4)
-plt.title("Filtered Spectrum")
-plt.imshow(mag_filtered, cmap="gray")
-plt.axis("off")
+        # 2) 只对 Y 做频域低通
+        Y_f, dftY_shift, fY = _lowpass_single_channel(Y, mask)
 
-plt.tight_layout()
-plt.show()
+        # 3) 合回去
+        ycrcb_f = cv2.merge([Y_f, Cr, Cb])
+        out_bgr = cv2.cvtColor(ycrcb_f, cv2.COLOR_YCrCb2BGR)
+
+        writer.write(out_bgr)
+
+        # 预览
+        if preview:
+            cv2.imshow("Original (BGR)", frame)
+            cv2.imshow("Low-pass on Luma Y (BGR)", out_bgr)
+
+            # 频谱预览（可选）
+            if frame_idx % preview_every == 0:
+                mag = cv2.magnitude(dftY_shift[:, :, 0], dftY_shift[:, :, 1])
+                mag = 20 * np.log(1 + mag)
+                mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                cv2.imshow("Spectrum (Y)", mag)
+
+                mag_f = cv2.magnitude(fY[:, :, 0], fY[:, :, 1])
+                mag_f = 20 * np.log(1 + mag_f)
+                mag_f = cv2.normalize(mag_f, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                cv2.imshow("Filtered Spectrum (Y)", mag_f)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord("q"):
+                break
+
+        frame_idx += 1
+
+    cap.release()
+    writer.release()
+    cv2.destroyAllWindows()
+    print(f"完成：输出 -> {out_path}")
+
+
+if __name__ == "__main__":
+    lowpass_fft_video_luma(
+        in_path="../collect_7.mp4",
+        out_path="output_lowpass_luma.mp4",
+        radius=30,
+        preview=True
+    )
