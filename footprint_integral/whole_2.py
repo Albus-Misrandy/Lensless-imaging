@@ -8,7 +8,7 @@ import numpy as np
 # ============================================================
 
 IMG_CALIB_PATH = "../snapshots/snapshot_20260115_160108.jpg"  # 标定用：孔很清晰、最好无按压
-MEAS_PATH = "../snapshots/snapshot_20260116_162823.jpg"  # 有按压
+MEAS_PATH = "../snapshots/snapshot_20260123_160539.jpg"  # 有按压
 FLAT_PATH = "../snapshots/flat.jpg"  # 无按压平场
 DARK_PATH = "../snapshots/dark.jpg"  # 全黑
 
@@ -628,14 +628,14 @@ def run_integration(calib_path, meas_path, flat_path, dark_path, out_dir, out_pr
     v1 = cal["v1"].astype(np.float32)
     v2 = cal["v2"].astype(np.float32)
     p0 = cal["p0"].astype(np.float32)
-    roi_x0 = int(cal["roi_x0"]);
+    roi_x0 = int(cal["roi_x0"])
     roi_y0 = int(cal["roi_y0"])
-    roi_w = int(cal["roi_w"]);
+    roi_w = int(cal["roi_w"])
     roi_h = int(cal["roi_h"])
     step = int(cal["grid_step"])
-    m_min = int(cal["m_min"]);
+    m_min = int(cal["m_min"])
     m_max = int(cal["m_max"])
-    n_min = int(cal["n_min"]);
+    n_min = int(cal["n_min"])
     n_max = int(cal["n_max"])
 
     meas = crop_roi_by_xywh(read_gray(meas_path), roi_x0, roi_y0, roi_w, roi_h)
